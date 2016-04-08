@@ -1,0 +1,35 @@
+    HotSpot的算法实现：
+        1.枚举根节点，必须停顿，如果引用关系还在变化，则无法保证分析结果的准确性，
+            借助oopmap快速枚举根节点，（Ordinary Object Map）
+
+        2.安全点，主动式中断，
+
+        3.安全区域（Safe Region）：安全区域是指，在一段代码片段中，引用关系不会发生变化，在这个安全区域的任何一个地方进行GC都是安全的。我们也可以把
+        Safe Region看作是被扩展了的安全点
+
+    HotSpot垃圾收集器
+        1.CMS收集器（Concurrent Mark-Sweep）是一款以获取最短停顿时间为目的的收集器。是一款老年代的收集器（Tenured Generation），也称为并发低停顿收集器
+    （Concurrent Lower Pause Collector）。
+        整个过程分为四个阶段：1 > CMS initial mark
+                              2 > CMS concurrent mark
+                              3 > CMS remark
+                              4 > CMS concurrent sweep
+        初始标记和重新标记仍然需要停顿整个程序。初始标记仅仅标记一下GC ROOTS能直接关联到的对象，并发标记就是GC ROOTS TRACING，重新标记就是修正并发标记
+    期间因用户程序继续运作而导致标记变动的那部分对象。
+        整个过程耗时最长的是并发标记和并发清楚，虽然初始标价和重新标记需要程序停顿，故总体来说CMS收集器的内存回收过程是和用户线程一起并发执行的。
+        缺点：1 > CMS收集器对CPU资源非常敏感。CMS默认启动垃圾回收的线程数是（cpu数量+3）/4，当CPU较少时，明显影响程序执行速度，使吞吐量降低。
+              2 > 无法处理浮动垃圾（Floating Garbage）可能出现Concurrent Mode Failure而导致一次FULL GC的产生。
+              当进行并发清理时，用户程序仍然在运行，新的垃圾不断产生，由于这些垃圾没有被标记，因此当次收集中无法清理，只好留给下一次GC。这一部分垃圾称为
+              浮动垃圾。用于垃圾收集阶段，用户程序不断运行，因此他不能像其他垃圾收集器那样等到老年代填满再收集，需要预留一部分空间以供并发收集时用户程序
+              使用。如果并发收集期间内存无法满足客户需求，则临时采用Serial Old收集器来重新进行老年代的收集，这样导致停顿时间继续加长。
+              3 > 基于标记-清除算法的收集器会产生大量的空间碎片，当无法找到足够连续的内存来分配当前对象时，则不得不提前触发一次FULL GC。
+
+        2.G1收集器（Garbage-First）在G1收集器中，Region之间对象引用和其他收集器中老年代和新生代之间的对象引用一样，虚拟机都采用Remembered Set的方式来避免
+    全堆扫描。G1中每个Region都有一个与之相对应的Remembered Set，虚拟机发现在对Reference类型的数据产生写操作时，就会产生一个Write Barrier暂时中断写的操
+    作，检查Reference关联的对象是否位于不同的Region（在分代收集器中就是检查老年代的对象中是否有对新生代的引用），如果是，就通过CardTable把相关引用信息
+    记录到被引用对象的Remembered Set之中。这样GC根节点枚举范围中加上Remembered Set即可保证不对全堆进行扫描。
+        如果不计算维护Remembered Set的时间，G1 GC大致可分为如下阶段：1 > 初始标记 initial mark
+                                                                     2 > 并发标记 concurrent mark
+                                                                     3 > 最终标记 final mark
+                                                                     4 > 筛选回收 live data counting and evaluating
+
